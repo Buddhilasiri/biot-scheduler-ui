@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Book a BiOT Meeting</title>
+
+<!--  Bootstrap 5  -->
+<link
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+  rel="stylesheet"
+/>
+
+<style>
+  :root {
+    --biot-blue:#253E6E;
+    --biot-honey:#F4A300;
+  }
+  body  { background:#f8fafc; }
+  .slot { width:100%; margin-bottom:.5rem; }
+  .slot.free   { background:var(--biot-honey); color:#fff; }
+  .slot.taken  { background:#adb5bd; color:#fff; cursor:not-allowed; }
+</style>
+</head>
+
+<body class="container py-4">
+
+<div class="text-center mb-4">
+  <img src="https://biot-innovations.com/logo.svg" alt="BiOT" height="60"/>
+  <h1 class="mt-3">Pick a slot</h1>
+  <p id="welcome" class="lead"></p>
+</div>
+
+<div id="calendar" class="row gy-4"></div>
+
+<!-- Bootstrap + Popper -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// -------- CONFIG ---------- //
+const API_BASE = 'https://n8n.biot-innovations.com/webhook/scheduler';
+const TZ       = 'Asia/Colombo';         // display helper
+// -------------------------- //
+
+// ------- Helpers ---------- //
+function fmtDate(d){ return d.toLocaleDateString('en-GB', {weekday:'short', day:'2-digit', month:'short'}); }
+function fmtTime(t){ return t; } // already HH:mm
+// -------------------------- //
+(async ()=>{
+  // 1) Extract token from URL
+  const url  = new URL(window.location.href);
+  const token= url.searchParams.get('t');
+  if(!token){ document.querySelector('#welcome').textContent='Invalid link.'; return; }
+
+  // 2) Call /validate
+  const res  = await fetch(`${API_BASE}/validate`,{
+                   method:'POST',
+                   headers:{'Content-Type':'application/json'},
+                   body:JSON.stringify({token})
+                 });
+  const data = await res.json();
+  if(data.error){ document.querySelector('#welcome').textContent=data.error; return; }
+  document.querySelector('#welcome').textContent = `Hi ${data.name}, choose a 60-min slot`;
+
+  // 3) Render slots (next 14 days)
+  const cal = document.getElementById('calendar');
+  data.slots.forEach(day=>{
+      const col = document.createElement('div');
+      col.className='col-12 col-md-6 col-lg-4';
+      col.innerHTML = `
+        <div class="card shadow-sm">
+          <div class="card-header fw-bold text-white" style="background:var(--biot-blue)">${fmtDate(new Date(day.date))}</div>
+          <div class="card-body d-grid gap-2" id="d${day.date}"></div>
+        </div>`;
+      cal.appendChild(col);
+
+      const body = col.querySelector(`#d${day.date}`);
+      day.times.forEach(t=>{
+        const btn = document.createElement('button');
+        btn.className=`slot btn ${t.available?'free':'taken'}`;
+        btn.textContent=`${fmtTime(t.time)} – ${fmtTime(t.end)}`;
+        btn.disabled = !t.available;
+        btn.onclick  = ()=>bookSlot(day.date,t.time);
+        body.appendChild(btn);
+      });
+  });
+
+  async function bookSlot(date,time){
+      const ok = confirm(`Book ${date} ${time} LK time?`);
+      if(!ok) return;
+      const r = await fetch(`${API_BASE}/book`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token,date,time})
+      });
+      const j = await r.json();
+      if(j.ok){
+         alert('Booked! Confirmation email sent.'); location.reload();
+      }else{
+         alert('Sorry, that slot was taken.'); location.reload();
+      }
+  }
+})();
+</script>
+</body>
+</html>
